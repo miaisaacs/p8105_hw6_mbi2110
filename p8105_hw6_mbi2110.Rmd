@@ -106,7 +106,7 @@ ci_results =
   )
 ```
 
-##Problem 2
+## Problem 2
 
 ### load and clean data
 ```{r}
