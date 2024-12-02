@@ -195,8 +195,93 @@ birthweight_df = read_csv("data/birthweight.csv") |>
 summary(birthweight_df)
 ```
 
+### look at data
+```{r}
+ggplot(birthweight_df, aes(x = bwt, y = blength)) + 
+  geom_point() + 
+  theme_minimal()
+```
 
+### propose model
+```{r}
+hypothetical_model <- lm(bwt ~ blength + bhead + babysex + gaweeks + delwt + fincome + 
+                            smoken + wtgain + momage + mheight + parity, data = birthweight_df)
 
+birthweight_df |> 
+  add_predictions(hypothetical_model) |>
+  add_residuals(hypothetical_model) |>
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", color = "red") + 
+  theme_minimal() +
+  labs(x = "Fitted Values", y = "Residuals")
+```
 
+My modeling process was based on hypothesized factors that may influence infant birthweight. Of the predictors in this dataset, I felt that baby length, head circumference, sex, gestational age, and mother's weight at delivery, income, smoking status, age, height, and prior live births would be most likely to explain differences in birthweight. Some predictors, such as malform and pnumgsa, had most observations coded as 0 and would thus likely have little impact in our model. I only wanted to include the most significant predictors to ensure parsimony.
 
+### fit model with main effects
+```{r}
+main_effects_model <- lm(bwt ~ blength + gaweeks, data = birthweight_df)
 
+birthweight_df |>
+  add_predictions(main_effects_model) |>
+  add_residuals(main_effects_model) |>
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", color = "red") + 
+  theme_minimal() +
+  labs(x = "Fitted Values", y = "Residuals")
+```
+
+### fit model with interactions
+```{r}
+interaction_model <- lm(bwt ~ bhead * blength * babysex + gaweeks + delwt + smoken + 
+                          wtgain + momage + mheight, data = birthweight_df)
+
+birthweight_df |>
+  add_predictions(interaction_model) |>
+  add_residuals(interaction_model) |>
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", color = "red") + 
+  theme_minimal() +
+  labs(x = "Fitted Values", y = "Residuals")
+```
+
+### make comparisons
+```{r}
+cv_df <- crossv_mc(birthweight_df, 100) |> 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble)
+  )
+
+cv_res_df <- cv_df |> 
+  mutate(
+    hypothetical_model = map(train, \(x) lm(bwt ~ blength + bhead + gaweeks + delwt + fincome + 
+                                              smoken + wtgain + momage + mheight + parity, data = x)),
+    main_effects_model = map(train, \(x) lm(bwt ~ blength + gaweeks, data = x)),
+    interaction_model = map(train, \(x) lm(bwt ~ bhead * blength * babysex + gaweeks + delwt + smoken + 
+                                             wtgain + momage + mheight, data = x))
+  ) |> 
+  mutate(
+    rmse_hypothetical = map2_dbl(hypothetical_model, test, rmse),
+    rmse_main_effects = map2_dbl(main_effects_model, test, rmse),
+    rmse_interaction = map2_dbl(interaction_model, test, rmse)
+  )
+
+cv_res_df |> 
+  select(starts_with("rmse")) |> 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_"
+  ) |> 
+  ggplot(aes(x = model, y = rmse)) + 
+  geom_violin() + 
+  theme_minimal() +
+  labs(x = "Model", y = "RMSE")
+```
+
+Based on the violin plot, I would choose to use the hypothetical model because it has relatively low RMSE and a fairly consistent distribution of RMSE. The interaction model also has low RMSE, but appears to be distributed less evenly. The main effects only model has quite large RMSE and an uneven distribution.
