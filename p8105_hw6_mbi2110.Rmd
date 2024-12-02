@@ -106,6 +106,95 @@ ci_results =
   )
 ```
 
+##Problem 2
+
+### load and clean data
+```{r}
+homicide_data = read_csv("data/homicide-data.csv") |> 
+  mutate(
+    city_state = paste(city, state, sep = ", "),
+    solved = ifelse(disposition %in% c("Closed by arrest", "Closed without arrest"), 1, 0),
+    victim_age = as.numeric(victim_age)
+  ) |> 
+  filter(
+    !(city_state %in% c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL")),
+    victim_race %in% c("White", "Black"),
+    !is.na(victim_age)
+  )
+```
+
+### logistic regression for Baltimore
+```{r}
+baltimore_data <- homicide_data |> 
+  filter(city_state == "Baltimore, MD")
+
+baltimore_fit <- glm(
+  solved ~ victim_age + victim_sex + victim_race,
+  data = baltimore_data,
+  family = binomial
+)
+```
+
+### obtain OR for male vs. female
+```{r}
+baltimore_results <- baltimore_fit |> 
+  broom::tidy(conf.int = TRUE, exponentiate = TRUE) |> 
+  filter(term == "victim_sexMale")
+
+baltimore_results
+```
+
+### logistic regression for all cities
+```{r}
+city_fit_results <- homicide_data |> 
+  group_by(city_state) |> 
+  nest() |> 
+  mutate(
+    model = map(data, ~ glm(
+      solved ~ victim_age + victim_sex + victim_race,
+      data = .x,
+      family = binomial
+    )),
+    results = map(model, ~ broom::tidy(.x, conf.int = TRUE, exponentiate = TRUE))
+  ) |> 
+  select(city_state, results) |> 
+  unnest(results) |> 
+  filter(term == "victim_sexMale") |> 
+  arrange(estimate)
+
+city_fit_results
+```
+
+### plot with ORs and CIs for each city
+```{r}
+city_fit_results |> 
+  ggplot(aes(x = reorder(city_state, estimate), y = estimate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.2) +
+  labs(
+    title = "Adjusted ORs for Solving Homicides by City",
+    x = "City",
+    y = "Adjusted Odds Ratio (Male vs. Female)"
+  ) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+For most cities, the adjusted OR for solving homicides comparing males to females is below 1, indicating that male homicide victims are less likely to have their attacker arrested. The odds of having a closed homicide case for males are <1 times the odds of having a closed homicide case for females for all cities in this dataset except Stockton, CA, Minneapolis, MN, and Fresno, CA.
+
+## Problem 3
+
+### load and clean data
+```{r}
+birthweight_df = read_csv("data/birthweight.csv") |> 
+  mutate(babysex = as.factor(babysex),
+         frace = as.factor(frace),
+         malform = as.factor(malform),
+         mrace = as.factor(mrace)
+         )
+
+summary(birthweight_df)
+```
+
 
 
 
